@@ -57,7 +57,7 @@ optional arguments:
   -MF MF, --mf MF       the Minor Allele Frequency to filter snp,default=0.05
   -MM MM, --mm MM       the Max-missing rate,default=0.2
   -CHR CHR, --chr CHR   Chromosomes splited with "," e.g -CHR 1,2,3,4,5
-  -K K, --k K           your belief of the number of ancestral populations
+  -K K, --k K           your belief of the number of ancestral populations,splited with "," e.g -K 1,2,3,4,5
 ```
 4.Example
 ---
