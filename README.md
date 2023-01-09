@@ -67,7 +67,8 @@ optional arguments:
 python Re-seq_analysis --STAGE 1
 ```
 <br>(2)-STAGE 2 is vcf filter,You can run it directly from the STAGE 1 results directory or bring your own unfiltered VCF file
-<br>`result documents:all_raw.vcf-->all_snp,vcf`
+<br>`result documents:all_raw.vcf-->all_snp,vcf` 
+<br>`*Attention：<1>Some VCF files have irregular chromosome names in the first column, please change them manually to standard numbers such as 1, 2. <2>Please keep only chromosomal SNPs manually for VCF files.`
 ```
 python Re-seq_analysis --STAGE 2 -MM 0.5 -MF 0.02
 ```
