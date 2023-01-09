@@ -9,11 +9,29 @@ The new version will be updated and maintained in /xqteng/Re-seq_analysis, pleas
 <br>`git clone https://github.com/xqteng/Re-seq_analysis.git` 
 <br>`cd Re-seq_analysis`<br/>
 
-Method2 For linux server
+<br>Method2 For linux server
  <br>`tar -zxvf  Re-seq_analysisXXX.tar.gz`
-    <br> `cd Re-seq_analysisXXX`<br/>
+    <br> `cd Re-seq_analysisXXX`
 
-2.Usage
+2.Introduction
+--
+Files to prepare before using this software include clean data, reference genome, sampling information file (a text file with a column of sampling IDs)
+<br>`xample：xxx_R1.fq.gz/xxx_R2.fq.gz,xxx.fa(xxx.fna),xxx.sampleID(dpending on the number of your groups)`
+```
+[server]$  cat YZ.sampleID
+cro_001
+cro_002
+cro_003
+cro_004
+cro_005
+cro_007
+cro_008
+cro_009
+cro_010
+cro_011
+cro_012
+```
+3.Usage
 --
 ```
 usage: select parameters:***.py [-h] [-STAGE STAGE] [-J JOB] [-T THREADNUM] [-SP SP] [-fasta-file-path FASTA] [-N N1] [-s S1] [-window-pi WP1] [-window-pi-step WPS1]
@@ -41,30 +59,28 @@ optional arguments:
   -CHR CHR, --chr CHR   Chromosomes splited with "," e.g -CHR 1,2,3,4,5
   -K K, --k K           your belief of the number of ancestral populations
 ```
-3.Example
+4.Example
 ---
 (1)-STAGE 1 is mapping+snp calling+vcf generate,You should prepare the reference genome and clean data in advance in the same catalogue
+<br>`result documents:mapping(.sam),snp calling(.bam,.markduplicate,.gvcf),vcf generate(all_raw.vcf)`
 ```
 python Re-seq_analysis --STAGE 1
 ```
-<br>result documents:mapping(.sam),snp calling(.bam,.markduplicate,.gvcf),vcf generate(all_raw.vcf)
-<br>
 <br>(2)-STAGE 2 is vcf filter,You can run it directly from the STAGE 1 results directory or bring your own unfiltered VCF file
+<br>`result documents:all_raw.vcf-->all_snp,vcf`
 ```
 python Re-seq_analysis --STAGE 2 -MM 0.5 -MF 0.02
 ```
-<br>result documents:all_raw.vcf-->all_snp,vcf
-<br>
+
 <br>-STAGE 3 is pca+admixture+Phylogenetic analyse to divide populations which You're not quite sure about your group sub-groups.
+<br>`result documents:pca(.eigenvec,.eigenval),admixture(plink.P,plink.Q),Phylogenetic analyse(.bestTree.nwk)`
 ```
 python Re-seq_analysis --STAGE 3 -N 100 -K 1,2,3,4,5,6,7 
 ```
-<br>result documents:pca(.eigenvec,.eigenval),admixture(plink.P,plink.Q),Phylogenetic analyse(.bestTree.nwk)
-<br>
 <br>-STAGE 4 is pca+admixture+Phylogenetic analyse+LDdecay+snp denisity+Genetic diversity datas+selective sweep analysis etc
+<br>`result documents:pca(.eigenvec,.eigenval),admixture(plink.P,plink.Q),Phylogenetic analyse(.bestTree.nwk),LDdecay(stat.gz),snp denisity(.denisity.png),Genetic diversity datas(.hwe,.het,.pic),selective sweep analysis(.pi,.fst,.fst_pi,.xpclr)`
 ```
 python Re-seq_analysis --STAGE 4 -s 100000 -M 500 -N 100 -K 1,2,3,4,5,6,7 --wp 50000 -wps 2000
 ```
-<br>result documents:pca(.eigenvec,.eigenval),admixture(plink.P,plink.Q),Phylogenetic analyse(.bestTree.nwk),LDdecay(stat.gz),snp denisity(.denisity.png),Genetic diversity datas(.hwe,.het,.pic),selective sweep analysis(.pi,.fst,.fst_pi,.xpclr)
-<br>
+
 
