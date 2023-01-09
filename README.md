@@ -44,11 +44,17 @@ optional arguments:
 3.Example
 ---
 (1)-STAGE 1 is mapping+snp calling+vcf generate,You should prepare the reference genome and clean data in advance in the same catalogue
-<br>`python Re-seq_analysis --STAGE 1`
+```
+python Re-seq_analysis --STAGE 1
+```
 <br>(2)-STAGE 2 is vcf filter,You can run it directly from the STAGE 1 results directory or bring your own unfiltered VCF file
-<br>`python Re-seq_analysis --STAGE 2 -MM 0.5 -MF 0.02`
+```
+python Re-seq_analysis --STAGE 2 -MM 0.5 -MF 0.02
+```
 <br>-STAGE 3 is pca+admixture+Phylogenetic analyse to divide populations which You're not quite sure about your group sub-groups.
-<br>`python Re-seq_analysis --STAGE 3 -N 100 -K 1,2,3,4,5,6,7 `
+```
+python Re-seq_analysis --STAGE 3 -N 100 -K 1,2,3,4,5,6,7 
+```
 <br>-STAGE 4 is pca+admixture+Phylogenetic analyse+LDdecay+snp denisity+Genetic diversity datas+selective sweep analysis etc
 ```
 python Re-seq_analysis --STAGE 4 -s 100000 -M 500 -N 100 -K 1,2,3,4,5,6,7 --wp 50000 -wps 2000
