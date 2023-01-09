@@ -31,9 +31,10 @@ optional arguments:
   -fasta-file-path FASTA, --fasta FASTA
   -N N1, --n1 N1        times of bootstraps,default=10
   -s S1, --s1 S1        the window size of snp density,default=10w
-  -window-pi WP1, --wp1 WP1
+  -M M,--M M            the max value of legend of SNP_density plot,default=500
+  -wp WP1, --wp1 WP1
                         the window size of Pi/Fst/xp-clr,default=5000
-  -window-pi-step WPS1, --wps1 WPS1
+  -wps WPS1, --wps1 WPS1
                         the window step of Pi/Fst/xp-clr,default=2000
   -MF MF, --mf MF       the Minor Allele Frequency to filter snp,default=0.05
   -MM MM, --mm MM       the Max-missing rate,default=0.2
@@ -42,7 +43,14 @@ optional arguments:
 ```
 3.Example
 ---
-#(1)-STAGE 1 is mapping+snp calling+vcf generate,You should prepare the reference genome and clean data in advance in the same catalogue
+(1)-STAGE 1 is mapping+snp calling+vcf generate,You should prepare the reference genome and clean data in advance in the same catalogue
 <br>`python Re-seq_analysis --STAGE 1`
-#(2)-STAGE 2 is vcf filter,You can run it directly from the STAGE 1 results directory or bring your own unfiltered VCF file
+<br>(2)-STAGE 2 is vcf filter,You can run it directly from the STAGE 1 results directory or bring your own unfiltered VCF file
 <br>`python Re-seq_analysis --STAGE 2 -MM 0.5 -MF 0.02`
+<br>-STAGE 3 is pca+admixture+Phylogenetic analyse to divide populations which You're not quite sure about your group sub-groups.
+<br>`python Re-seq_analysis --STAGE 3 -N 100 -K 1,2,3,4,5,6,7 `
+<br>-STAGE 4 is pca+admixture+Phylogenetic analyse+LDdecay+snp denisity+Genetic diversity datas+selective sweep analysis etc
+```
+python Re-seq_analysis --STAGE 4 -s 100000 -M 500 -N 100 -K 1,2,3,4,5,6,7 --wp 50000 -wps 2000
+```
+
