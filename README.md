@@ -1,16 +1,21 @@
 # Re-seq_analysis
-Based on the known pipelines and analysis outputs of population genetics, we constructed a pipeline to treat the population sequencing data, which can be easily used by the beginners.Briefly, the clean resequencing data after quality control and trimming was mapped to the reference genome. Following the genetic variability test of all the alignments, analyzation of population phylogeny, population structure, principal component analysis, and selective elimination were parallelly conducted, as well as estimation of the genetic diversity of each population. The resulting data were visualized by the R or Python scripts.
-1.INSTALL
-The new version will be updated and maintained in /xqteng/Re-seq_analysis, please click below website to download the latest version
-Method1 For linux/Unix and macOS
-git clone https://github.com/xqteng/Re-seq_analysis.git 
-cd Re-seq_analysis
 
-Method2 For linux/Unix and macOS
- tar -zxvf  Re-seq_analysisXXX.tar.gz
-        cd Re-seq_analysisXXX;
+Based on the known pipelines and analysis outputs of population genetics, we constructed a pipeline to treat the population sequencing data, which can be easily used by the beginners.Briefly, the clean resequencing data after quality control and trimming was mapped to the reference genome. Following the genetic variability test of all the alignments, analyzation of population phylogeny, population structure, principal component analysis, and selective elimination were parallelly conducted, as well as estimation of the genetic diversity of each population. The resulting data were visualized by the R or Python scripts.
+
+1.INSTALL
+--
+The new version will be updated and maintained in /xqteng/Re-seq_analysis, please  download the latest version，No configuration required, just unpack and use。`Due to the large volume of resequencing data, it is recommended to run on a server`
+<br>Method1 For linux
+<br>`git clone https://github.com/xqteng/Re-seq_analysis.git` 
+<br>`cd Re-seq_analysis`<br/>
+
+Method2 For linux
+ <br>`tar -zxvf  Re-seq_analysisXXX.tar.gz`
+    <br> `cd Re-seq_analysisXXX`<br/>
+
 2.USAGE
-Parameter description
+--
+```
 usage: select parameters:***.py [-h] [-STAGE STAGE] [-J JOB] [-T THREADNUM] [-SP SP] [-fasta-file-path FASTA] [-N N1] [-s S1] [-window-pi WP1] [-window-pi-step WPS1]
                                 [-MF MF] [-MM MM] [-CHR CHR] [-K K]
 
@@ -34,3 +39,4 @@ optional arguments:
   -MM MM, --mm MM       the Max-missing rate,default=0.2
   -CHR CHR, --chr CHR   Chromosomes splited with "," e.g -CHR 1,2,3,4,5
   -K K, --k K           your belief of the number of ancestral populations
+```
