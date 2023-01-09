@@ -2,18 +2,18 @@
 
 Based on the known pipelines and analysis outputs of population genetics, we constructed a pipeline to treat the population sequencing data, which can be easily used by the beginners.Briefly, the clean resequencing data after quality control and trimming was mapped to the reference genome. Following the genetic variability test of all the alignments, analyzation of population phylogeny, population structure, principal component analysis, and selective elimination were parallelly conducted, as well as estimation of the genetic diversity of each population. The resulting data were visualized by the R or Python scripts.
 
-1.INSTALL
+1.Install
 --
 The new version will be updated and maintained in /xqteng/Re-seq_analysis, please  download the latest version，No configuration required, just unpack and use。`Due to the large volume of resequencing data, it is recommended to run on a server`
-<br>Method1 For linux
+<br>Method1 For linux server
 <br>`git clone https://github.com/xqteng/Re-seq_analysis.git` 
 <br>`cd Re-seq_analysis`<br/>
 
-Method2 For linux
+Method2 For linux server
  <br>`tar -zxvf  Re-seq_analysisXXX.tar.gz`
     <br> `cd Re-seq_analysisXXX`<br/>
 
-2.USAGE
+2.Usage
 --
 ```
 usage: select parameters:***.py [-h] [-STAGE STAGE] [-J JOB] [-T THREADNUM] [-SP SP] [-fasta-file-path FASTA] [-N N1] [-s S1] [-window-pi WP1] [-window-pi-step WPS1]
@@ -40,3 +40,9 @@ optional arguments:
   -CHR CHR, --chr CHR   Chromosomes splited with "," e.g -CHR 1,2,3,4,5
   -K K, --k K           your belief of the number of ancestral populations
 ```
+3.Example
+---
+#(1)-STAGE 1 is mapping+snp calling+vcf generate,You should prepare the reference genome and clean data in advance in the same catalogue
+<br>`python Re-seq_analysis --STAGE 1`
+#(2)-STAGE 2 is vcf filter,You can run it directly from the STAGE 1 results directory or bring your own unfiltered VCF file
+<br>`python Re-seq_analysis --STAGE 2 -MM 0.5 -MF 0.02`
