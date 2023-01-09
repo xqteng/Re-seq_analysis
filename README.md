@@ -81,7 +81,7 @@ python Re-seq_analysis --STAGE 3 -N 100 -K 1,2,3,4,5,6,7
 <br>-STAGE 4 is pca+admixture+Phylogenetic analyse+LDdecay+snp denisity+Genetic diversity datas+selective sweep analysis etc
 <br>`result documents:pca(.eigenvec,.eigenval),admixture(plink.P,plink.Q),Phylogenetic analyse(.bestTree.nwk),LDdecay(stat.gz),snp denisity(.denisity.png),Genetic diversity datas(.hwe,.het,.pic),selective sweep analysis(.pi,.fst,.fst_pi,.xpclr)`
 ```
-python Re-seq_analysis --STAGE 4 -s 100000 -M 500 -N 100 -K 1,2,3,4,5,6,7 --wp 50000 -wps 2000
+python Re-seq_analysis --STAGE 4 -s 100000 -M 500 -N 100 -K 1,2,3,4,5,6,7 --wp 50000 -wps 2000 -CHR 01,02,03,04,05,06,07,08,09,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24
 ```
 
 
