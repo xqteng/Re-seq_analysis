@@ -1,0 +1,13 @@
+Rscript>=3.6.0 
+perl>=v5.16.3
+python>=3.8.5
+bwa>=0.7.16a-r1181
+GATK>=v4.3.0.0
+samtools>=1.6 (using htslib 1.6)
+VCFtools>=v0.1.13
+PLINK>=v1.90b6.17
+ADMIXTURE>=1.3.0
+RAxML>=8.2.12
+PopLDDecay>=v3.40
+xpclr(python)>=1.1.2
+

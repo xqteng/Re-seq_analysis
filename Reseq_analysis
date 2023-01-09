@@ -1,0 +1,722 @@
+import os
+import time
+
+from threading import Thread
+import collections
+from functools import wraps
+import argparse
+
+# 过程文件输出目录
+SAM_FILE_PATH = ""
+BAM_FILE_PATH = ""
+SORTED_BAM_FILE_PATH = ""
+DUPLICATED_FILE_PATH = ""
+GVCF_FILE_PATH = ""
+PLINK_FILE_PATH = ""
+GCTA_FILE_PATH = ""
+LOG_PATH = ""
+PCA_PATH = ""
+eigvenval_file_name = "all_raw_snp.gcta_pca.eigenval"
+eigvenc_file_name = "all_snp.plink.eigenvec"
+
+# 最终聚合的gvcf 文件
+ALL_COMBINED_GVCF = "all_combined.gvcf"
+
+# 样本数量阈值，超过该值为大量样本
+SAMPLE_THRESHOLD = 100
+# 转化线程数
+THREAD_NUM = 4
+#THREAD_NUM = args.threadnum
+# 双向队列
+DEQUE_LEN = 10
+#DEQUE_LEN = args.job
+job_deque = collections.deque(maxlen=DEQUE_LEN)
+
+INIT_PATHS = [SAM_FILE_PATH, BAM_FILE_PATH, SORTED_BAM_FILE_PATH, DUPLICATED_FILE_PATH, LOG_PATH,
+              GVCF_FILE_PATH, PLINK_FILE_PATH, GCTA_FILE_PATH, PCA_PATH]
+
+
+class Job(Thread):
+    def __init__(self, cmd, func_name):
+        super(Job, self).__init__()
+        self.cmd = cmd
+        # 1021 代表执行中
+        self.res = 1021
+        self.func_name = func_name
+
+    def run(self):
+        cmd_execute_sync(self.cmd, self.func_name)
+
+    def get_res(self):
+        return self.res
+
+    def get_cmd(self):
+        return self.cmd
+
+
+# 检查seed文件是否符合命名规则
+def check_file():
+    log("start check file")
+    invalid_files = []
+    for file in list_file_with_end(SOURCE_FILE_PATH, ".gz"):
+        if not str(file).endswith("R1.fq.gz") and not str(file).endswith("R2.fq.gz"):
+            invalid_files.append(file)
+    if len(invalid_files) >= 1:
+        print("file pattern check failed, check: {}".format(invalid_files))
+        exit(0)
+
+
+def wrap_log(a_func):
+    @wraps(a_func)
+    def wrap_function(*args, **kwargs):
+        log("start {}".format(a_func.__name__))
+        a_func(*args, **kwargs)
+        log("{} finished".format(a_func.__name__))
+
+    return wrap_function
+
+
+def remove_suffix(input_string, suffix):
+    if input_string.endswith(suffix):
+        return input_string[:-len(suffix)]
+    return input_string
+
+
+# 阻塞等待
+def waiting(a_func):
+    @wraps(a_func)
+    def wrap_function():
+        a_func()
+        waiting_processed_minutes = 0
+        while True:
+            if len(job_deque) > 0:
+                # 没执行完再塞回去
+                head_job = job_deque.popleft()
+                if head_job.res != 0:
+                    job_deque.appendleft(head_job)
+                time.sleep(3)
+                log("waiting , queue len:{}".format(len(job_deque)))
+                time.sleep(3)
+            else:
+                break
+
+    return wrap_function
+
+
+def cmd_execute_rsync(cmd, func_name):
+    # 0 和 非0 两种状态，0为正常执行完成
+    while True:
+        if len(job_deque) == DEQUE_LEN:
+            head_job = job_deque.popleft()
+            # 队列满 且 队首未执行完，需阻塞等待
+            # 1021 代表执行中
+            if head_job.res == 1021:
+                job_deque.appendleft(head_job)
+                time.sleep(3)
+                continue
+        job = Job(cmd, func_name)
+        job.start()
+        job_deque.append(job)
+        break
+    return 0
+
+
+# 1. 初始化，清空sam文件文件夹,并检查seed文件是否合法
+def init():
+    # 判断文件夹是否存在，初始化创建文件夹 list
+    for path in INIT_PATHS:
+        if not os.path.exists(path):
+            os.mkdir(path)
+            log("path:{} 不存在 , 创建完成".format(path))
+    check_file()
+
+
+# 2.构建fa索引
+def create_fa_index():
+    log("start create index")
+    log_path = LOG_PATH + "bwa_index.log"
+    cmd = "bwa index -a bwtsw  {} > {}".format(FASTA_FILE_PATH, log_path)
+    val = os.system(cmd)
+    if val != 0:
+        log("generate index failed, check: {}".format(log_path))
+        exit(0)
+
+
+# 3-1.批量转换种子文件为sam
+@waiting
+def transfer_fqgz_files_to_sam():
+    if len(list_file_with_end(SOURCE_FILE_PATH, ".gz")) < 1:
+        log("fqgz files not found!")
+        exit(0)
+
+    processed_file_count = 0
+    for file_path in list_file_with_end(SOURCE_FILE_PATH, ".gz"):
+        # # 限制并发处理
+        processed_file_count = processed_file_count + 1
+        # 处理种子文件 -> sam
+        tmp_list = str(file_path).split(".fq.gz")[0][:-3].split("/")
+        target_prefix = tmp_list[len(tmp_list) - 1]
+        trans_file_to_sam(target_prefix)
+    log("transfer all fq.gz to sam finished!")
+
+
+# 3-2.转化一个seed为sam文件
+def trans_file_to_sam(target_prefix):
+    log("start trans {} to sam".format(target_prefix))
+    sam_file_path = SAM_FILE_PATH + target_prefix + ".sam"
+    first_file_path = SOURCE_FILE_PATH + target_prefix + "_R1.fq.gz"
+    second_file_path = SOURCE_FILE_PATH + target_prefix + "_R2.fq.gz"
+    log_file = LOG_PATH + target_prefix + ".log"
+    # 1.thread 2.first_file_path 3. FASTA_FILE_PATH 4. FASTA_FILE_PATH 5.first_file_path 6. second_file_path 7.
+    # sam_file_path 8. log
+    cmd = "bwa mem -t {} -M -R \"@RG\\tID:{}\\tSM:{}\\tPL:ILLUMINA\" {} {} {} -o {} > {}" \
+        .format(THREAD_NUM, first_file_path, second_file_path, FASTA_FILE_PATH, first_file_path, second_file_path,
+                sam_file_path, log_file)
+    cmd_execute_rsync(cmd, "trans_file_to_sam")
+
+
+# 4.验证sam文件
+@waiting
+def validate_sam():
+    log("start validate sam files")
+    cmd = "gatk  ValidateSamFile --INPUT {}"
+    invalid_sam_files = []
+    sam_file_paths = list_file_with_end(SAM_FILE_PATH, ".sam")
+    for sam_file_path in sam_file_paths:
+        var = cmd_execute_rsync(cmd.format(sam_file_path), "validate_sam")
+        if var != 0:
+            invalid_sam_files.append(sam_file_path)
+
+    if len(invalid_sam_files) > 0:
+        log("sam file validate failed! check:{}".format(invalid_sam_files))
+        exit(0)
+    else:
+        log("start validate sam files")
+
+
+# 5.sam文件转化为*sort.bam文件,执行完该方法后，调用list_bam_files
+@waiting
+def sam_to_bam():
+    log("start trans sam to bam")
+    origin_cmd = "gatk SortSam -I {} -O {} --TMP_DIR {} -SO coordinate"
+    sam_file_count = 0
+    invalid_sam_files = []
+    sort_sam_file_paths = list_file_with_end(SAM_FILE_PATH, ".sam")
+    for sort_sam_path in sort_sam_file_paths:
+        sam_file_count = sam_file_count + 1
+        # 限制并发处理
+        tmp_array = remove_suffix(sort_sam_path, ".sam").split("/")
+        sam_file_name_prefix = tmp_array[len(tmp_array) - 1]
+        bam_file_name = sam_file_name_prefix + "_sorted.bam"
+        tmp_file_name = sam_file_name_prefix + ".tmp"
+        cmd = origin_cmd.format(sort_sam_path, BAM_FILE_PATH + bam_file_name,
+                                BAM_FILE_PATH + tmp_file_name)
+        val = cmd_execute_rsync(cmd, "sam_to_bam")
+        if val != 0:
+            invalid_sam_files.append(sort_sam_path)
+    # 文件生成失败集合
+    if len(invalid_sam_files) != 0:
+        log("sorted to bam files failed, list:{}".format(invalid_sam_files))
+        exit(0)
+
+    # 校验生成数量
+    bam_file_paths = list_file_with_end(BAM_FILE_PATH, "sort.bam")
+    if len(bam_file_paths) != sam_file_count:
+        log("No. of sam not equals No. of bam")
+        exit(0)
+
+
+# 6. sam文件使用samtools 筛选
+@waiting
+def sam_tools_filter():
+    log("start samtools_filter")
+    origin_cmd = "samtools view -bF {} {} > {}"
+    bam_failed_list = []
+    bam_file_paths = list_file_with_end(BAM_FILE_PATH, "sort.bam")
+    bam_file_count = 0
+    for bam_file_path in bam_file_paths:
+        bam_file_count = bam_file_count + 1
+        # 限制并发处理
+        tmp_array = remove_suffix(bam_file_path, ".bam").split("/")
+        bam_file_name_prefix = tmp_array[len(tmp_array) - 1]
+        sorted_bam_file_name = bam_file_name_prefix + "_sorted.bam"
+        cmd = origin_cmd.format(bam_sort_choice, bam_file_path, SORTED_BAM_FILE_PATH + sorted_bam_file_name)
+        val = cmd_execute_rsync(cmd, "sam_tools_filter")
+        if val != 0:
+            bam_failed_list.append(bam_file_path)
+
+    if len(bam_failed_list) != 0:
+        log("sort.bam to sorted.bam failed, files:{}".format(bam_failed_list))
+        exit(0)
+
+
+# 7. markDuplicates
+@waiting
+def mark_duplicates():
+    log("start mark_duplicates")
+    sorted_bam_paths = list_file_with_end(SORTED_BAM_FILE_PATH, "sorted.bam")
+    origin_cmd = "gatk MarkDuplicates -I {} -O {}.deduplicated -M {}.deduplicated.metrics"
+    failed_files = []
+    for sorted_bam_path in sorted_bam_paths:
+        tmp_array = remove_suffix(sorted_bam_path, ".bam").split("/")
+        sorted_bam_file_name_prefix = DUPLICATED_FILE_PATH + tmp_array[len(tmp_array) - 1]
+        cmd = origin_cmd.format(sorted_bam_path, sorted_bam_file_name_prefix, sorted_bam_file_name_prefix)
+        var = cmd_execute_rsync(cmd, "mark_duplicates")
+        if var != 0:
+            failed_files.append(sorted_bam_path)
+    if len(failed_files) != 0:
+        log("failed markDuplicates, check:{}".format(failed_files))
+        exit(0)
+
+
+# 8. 建立snp bam索引
+def create_bam_index():
+    _create_bam_index()
+    _create_bam_index_()
+
+
+# 8-1
+@waiting
+def _create_bam_index():
+    log("start create_bam_index")
+    file_paths = list_file_with_end(DUPLICATED_FILE_PATH, "sorted.deduplicated")
+    origin_cmd = "samtools index {}"
+    failed_files = []
+    for file_path in file_paths:
+        var = cmd_execute_rsync(origin_cmd.format(file_path), "_create_bam_index")
+        if var != 0:
+            failed_files.append(file_path)
+
+    if len(failed_files) > 0:
+        log("create_bam_index failed files:{}".format(failed_files))
+        exit(0)
+
+
+# 8-2
+def _create_bam_index_():
+    cmd = "samtools faidx {}" \
+        .format(FASTA_FILE_PATH, "grasscarp_LGanchored_scaffolds.fa")
+    var = os.system(cmd)
+    if var != 0:
+        log("samtools create_bam_index failed, cmd is :{}".format(cmd))
+        exit(0)
+    cmd = "gatk CreateSequenceDictionary -R {} > CreateSequenceDictionary.log".format(FASTA_FILE_PATH)
+    var = os.system(cmd)
+    if var != 0:
+        log("samtools create_bam_index failed, cmd is :{}".format(cmd))
+        exit(0)
+
+
+# 9. 生成gvcf文件
+@waiting
+def generate_gvcf_files():
+    log("start generate_gvcf_files")
+    file_paths = list_file_with_end(DUPLICATED_FILE_PATH, "sorted.deduplicated")
+    # 1. 参考基因组文件, 2. 源文件 3.目标文件
+    origin_cmd = "gatk HaplotypeCaller --pcr-indel-model CONSERVATIVE -ERC GVCF -R  {} -I {} -O {}"
+    failed_files = []
+    for file_path in file_paths:
+        tmp_array = remove_suffix(str(file_path), "sorted.bam.deduplicated").split("/")
+        gvcf_file_name = tmp_array[len(tmp_array) - 1]
+        gvcf_file_path = GVCF_FILE_PATH + gvcf_file_name + ".gvcf"
+        cmd = origin_cmd.format(FASTA_FILE_PATH, file_path, gvcf_file_path)
+        var = cmd_execute_rsync(cmd, "generate_gvcf_files")
+        if var != 0:
+            failed_files.append(file_path)
+    if len(failed_files) != 0:
+        log("generate_gvcf_files failed, files:{}".format(failed_files))
+        exit(0)
+
+
+# 10.gvcf文件合并
+@waiting
+def merge_gvcf_files():
+    log("start merge gvcf files")
+    # 判断样本数量，少量样本和大量样本用不同的处理逻辑
+    gvcf_count = len(list_file_with_end(GVCF_FILE_PATH, "gcvf_file_paths"))
+    log("gvcf file count:{}".format(gvcf_count))
+    if gvcf_count <= 100:
+        short_gvcf_files()
+    else:
+        # todo 需要支持大于100的情况
+        long_gvcf_files()
+    log("merge finished")
+
+
+# 10.1 gvcf文件合并 少量样本情况
+def short_gvcf_files():
+    log("start short_gvcf_files")
+    gcvf_file_paths = list_file_with_end(GVCF_FILE_PATH, "gvcf")
+    cmd = "gatk CombineGVCFs  -R {} ".format(FASTA_FILE_PATH)
+    for gcvf_file_path in gcvf_file_paths:
+        cmd = cmd + " -V {}".format(gcvf_file_path)
+    cmd = cmd + " -O " + ALL_COMBINED_GVCF
+    var = cmd_execute_rsync(cmd, "short_gvcf_files")
+    if var != 0:
+        log("short merge faile d")
+        exit(0)
+
+
+# 10.2 gvcf文件合并 大量样本情况
+def long_gvcf_files():
+    log("start long_gvcf_files, 暂不支持")
+    cmd = "gatk CombineGVCFs  -R {} ".format(FASTA_FILE_PATH)
+    exit(0)
+
+
+# 11 gvcf -> vcf
+@waiting
+@wrap_log
+def gvcf_to_vcf():
+    # 1.fa 2. all_combined.gvcf 3. vcf
+    vcf_file_path = GVCF_FILE_PATH + "all_raw.vcf"
+    cmd = "gatk GenotypeGVCFs -R {} -V {} -O {}".format(FASTA_FILE_PATH, ALL_COMBINED_GVCF, vcf_file_path)
+    val = cmd_execute_rsync(cmd, "gvcf_to_vcf")
+    if val != 0:
+        log("gvcf -> vcf file failed!")
+        exit(0)
+
+
+# 12.pca分析
+@wrap_log
+def analyze_pca():
+    # 第一步
+    # 1.origin all combined vcf 2.snp vcf
+    snp_vcf_path = GVCF_FILE_PATH + "all_raw_snp.vcf"
+    snp_plink_path = PLINK_FILE_PATH + "all_raw_snp.plink"
+    # snp_plink2_path = PLINK_FILE_PATH + "all_raw_snp_2.plink"
+    remove_lg_origin_cmd = "sed s'/LG//'g  {} > {}".format(ALL_COMBINED_GVCF, snp_vcf_path)
+    val = os.system(remove_lg_origin_cmd)
+    if val != 0:
+        log("all combined vcf translate to snp vcf failed")
+        exit(0)
+    # 第二步
+    # 1. snp vcf 2. all_raw_snp_plink_path
+    origin_cmd = "plink --vcf {} --recode --out {} --const-fid --allow-extra-chr > plink_fid.log" \
+        .format(snp_vcf_path, snp_plink_path)
+    val = os.system(origin_cmd)
+    if val != 0:
+        log("snp vcf to all_raw_snp_plink failed")
+        exit(0)
+    # 第三步
+    # 1.all_raw_snp_plink_path 2. all_raw_snp_plink2_path
+    origin_cmd = "plink --allow-extra-chr --file {} --noweb --make-bed --out {} 2> plink_bed.log". \
+        format(snp_plink_path, snp_plink_path)
+    os.system(origin_cmd)
+    if val != 0:
+        log("plink_1 to plink_2 failed")
+        exit(0)
+
+# 15. .eigenvec 画图
+def generate_graph():
+    gcta_pac_eigenval_file_path = GCTA_FILE_PATH + eigvenc_file_name
+    cmd = "Rscript pca.R \"{}\"".format(gcta_pac_eigenval_file_path)
+    val = os.system(cmd)
+    if val != 0:
+        log("generate_graph failed, cmd:{}".format(cmd))
+        exit(0)
+
+
+# 1 第二个文档开始处
+@wrap_log
+def step_1():
+    cmd = "gatk SelectVariants -V all_raw.vcf -select-type SNP -O all_raw_snp.vcf"
+    cmd_execute_sync(cmd, "step_1")
+
+
+@wrap_log
+def step_2():
+    cmd = 'gatk VariantFiltration -V all_raw_snp.vcf  -filter "QD < 2.0" --filter-name "QD2" -filter "MQ < 40.0" --filter-name "MQ40" -filter "MQRankSum < -12.5" --filter-name "MQRankSum-12.5" -filter "ReadPosRankSum < -8.0" --filter-name "ReadPosRankSum-8" -O all_raw_snp_hardfiltereannotated.vcf'
+    cmd2 = 'gatk SelectVariants --exclude-filtered true -V all_raw_snp_hardfiltereannotated.vcf -O all_raw_snp_hardfiltered.vcf > all_raw_snp_hardfiltered.vcf.log'
+    cmd_execute_sync(cmd, "step_2")
+    cmd_execute_sync(cmd2, "step_2")
+
+
+@wrap_log
+def step_3(mm, mf):
+    cmd = 'vcftools --vcf all_raw_snp_hardfiltered.vcf --max-missing {} --maf {} --mac 3 --recode --recode-INFO-all --out  all_snp.vcf >all_snp.softfilter.log'.format(
+        mm, mf)
+    cmd_execute_sync(cmd, "step_3")
+
+
+@wrap_log
+def step_4():
+    sample_id_paths = list_file_with_end(os.getcwd(), "sampleID")
+
+    # 读取sampleId文件
+    for path in sample_id_paths:
+        group_name = str.split(str.split(path, '/')[-1], '.')[0]
+        cmd = 'gatk SelectVariants -V  all_snp.vcf -O {}.vcf'.format(group_name)
+        sample_id_file = open(path, 'r')
+        for line in sample_id_file:
+            if str(line.replace(' ', '').strip('\n')) != 0:
+                cmd += ' -sn ' + line.replace('\n', '')
+        log("step_4 group_name:{} cmd: {}".format(group_name, cmd))
+        cmd_execute_rsync(cmd, "step_4")
+
+
+@wrap_log
+def step_5():
+    cmds = ['plink --vcf all_snp.vcf --recode --out all_snp.plink --const-fid --allow-extra-chr > plink_fid.log',
+            'plink --allow-extra-chr --file all_snp.plink --noweb --make-bed --out all_snp.plink 2> plink_bed.log',
+            'plink --allow-extra-chr --threads 20 -bfile all_snp.plink --pca 20 --out all_snp.plink',
+            'plink --file all_snp.plink --hardy --out all_snp.plink',
+            'plink --file all_snp.plink --freq --out all_snp.plink',
+            'plink --file all_snp.plink --het --out all_snp.plink']
+    for cmd in cmds:
+        cmd_execute_sync(cmd, 'step_5')
+
+
+@wrap_log
+def step_6(n1):
+    cmds = ['perl gatkVCFFileSNP_2_tbl.pl AmbiguityCodes all_snp.vcf  > all_snp.vcf.tbl',
+            'perl gatkVCFFileSNP_2_tbl_2_seq.pl all_snp.vcf.tbl > all_snp.vcf.seq',
+            '/home/software/RAxML-8.2.12/raxmlHPC-PTHREADS  -T 12  -f a  -N {}  -m ASC_GTRCAT -V --asc-corr lewis -x 123456 -p 123456 -s all_snp.vcf.seq -n all_snp.vcf.seq.nwk'.format(
+                n1)]
+    for cmd in cmds:
+        cmd_execute_sync(cmd, 'step_6')
+
+
+@wrap_log
+def step_7(p):
+    files = list_file_with_end(os.getcwd(), "sampleID")
+    for file in files:
+        param = str.split(str.split(file, "/")[-1], '.')[0]
+        cmd = 'PopLDdecay -InVCF all_snp.vcf -SubPop {} -OutStat {}.LDdecay'.format(file, param)
+        cmd_execute_sync(cmd, 'step_7')
+        p.append(param)
+
+
+@wrap_log
+def step_8(params):
+    log("step_8 params:{}".format(params))
+    path = 'draw.list'
+    # 清空文本内容
+    file = open(path, 'w').close()
+    # 写入数据
+    file = open(path, 'a')
+
+    for param in params:
+        file.write("{}.LDdecay.stat.gz {}".format(param, param))
+        file.write('\n')
+    file.close()
+    cmd = 'perl Plot_MultiPop.pl -inList draw.list -output draw.graph -keepR'
+    cmd_execute_sync(cmd, "step_8")
+
+
+@wrap_log
+def step_9(p, sd):
+    for param in set(p):
+        cmd = 'Rscript snp.density.map.R -i {}.vcf -n {} -s {} -c "darkgreen,yellow,red"'.format(param, param, sd)
+        cmd_execute_sync(cmd, "step_9")
+
+
+@wrap_log
+def step_10(params, ws, wsp):
+    for param in set(params):
+        cmd = 'vcftools --vcf {}.vcf --window-pi {} --window-pi-step {} --out {}'.format(param, ws, wsp, param)
+        cmd_execute_sync(cmd, "step_10")
+
+
+@wrap_log
+def step_11(p, ws, wsp):
+    for p1 in set(p):
+        for p2 in set(p):
+            if p1 is not p2:
+                cmd = 'vcftools --vcf all_snp.vcf --weir-fst-pop {}.sampleID --weir-fst-pop {}.sampleID --out {}_vs_{} --fst-window-size {} --fst-window-step {}'.format(
+                    p1, p2, p1, p2, ws, wsp)
+                cmd_execute_sync(cmd, "step_11")
+
+
+@wrap_log
+def step_12(params):
+    for p1 in set(params):
+        for p2 in set(params):
+            if p1 is not p2:
+                cmd = 'perl pi_fst_toghter.pl {}_vs_{}.windowed.weir.fst {}.windowed.pi {}.windowed.pi >{}_vs_{}.fst_pi' \
+                    .format(p1, p2, p1, p2, p1, p2)
+                cmd_execute_sync(cmd, "step_12")
+
+
+@wrap_log
+def step_13(params):
+    for p in set(params):
+        cmd = "python3  PIC_calculator.py -v {}.vcf".format(p)
+        cmd_execute_sync(cmd, "step_13")
+
+
+@wrap_log
+def step_14(params, chr):
+    chr_list = str(chr).split(',')
+    for per_chr in set(chr_list):
+        for p1 in set(params):
+            for p2 in set(params):
+                if p1 is not p2:
+                    cmd = "python3  /home/software/xpclr-1.1.2/bin/xpclr  --format  vcf  --size 50000  --step 2000  --chr {}  --samplesA {}.sampleID --samplesB {}.sampleID  --input  all_snp.vcf  --out  {}vs{}.xpclr.{}.out" \
+                        .format(p1, p2, p1, p2,per_chr ,per_chr)
+                    cmd_execute_sync(cmd, "step_14")
+
+
+@wrap_log
+def step_15(params, chr):
+    chr_list = str(chr).split(',')
+    for per_chr in set(chr_list):
+        for p1 in set(params):
+            for p2 in set(params):
+                cmd = 'head -n 1 {}vs{}.xpclr.{}.out > {}vs{}.xpclr'.format(p1, p2, per_chr, p1, p2)
+                cmd_execute_rsync(cmd, "step_15")
+
+
+@wrap_log
+def step_16(params, k):
+    k_list = str(k).split(',')
+    for per_k in set(k_list):
+        cmd = "admixture  --cv all_snp.plink.bed {} -j10  >all_snp.plink.bed.log.{}" \
+            .format(per_k,per_k)
+        cmd_execute_sync(cmd, "step_16")
+
+def list_file_with_end(path, end_with) -> list:
+    log("start list files, path:{}, endWith:{}".format(path, end_with))
+    bam_file_paths = []
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            if file.endswith(end_with):
+                bam_file_paths.append(path + '/' + file)
+    bam_file_paths = list(set(bam_file_paths))
+    log("list_file_with_end :{}".format(bam_file_paths))
+    return bam_file_paths
+
+
+def log(log_content):
+    # log_content = log_content.encode("utf-8").decode("latin1")
+    print("--------{}--{}---------".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), log_content))
+
+
+# 通用执行命令方法 同步执行方法
+def cmd_execute_sync(cmd, func_name):
+    log("func name: {}, prepare exec cmd:{}".format(func_name, cmd))
+    val = os.system(cmd)
+    if val != 0:
+        log("cmd:'{}' run failed".format(cmd))
+        exit(0)
+
+
+# 第一部分 年前的第一个文档的内容
+def first():
+    # 1.初始化文件夹
+    init()
+    
+    # log("选择全部匹配(4) OR 部分匹配(12), 输入(4,12):")
+    # bam_sort_choice = input()
+    # 2.fa
+    create_fa_index()
+    # 3.
+    transfer_fqgz_files_to_sam()
+    # 4.
+    validate_sam()
+    # 5
+    sam_to_bam()
+    # 7. 废弃
+    # sam_tools_filter()
+    # 8.
+    mark_duplicates()
+    # 9.
+    create_bam_index()
+    # 10
+    generate_gvcf_files()
+    # 11.
+    merge_gvcf_files()
+    # 12
+    gvcf_to_vcf()
+    # 13 废弃
+    # analyze_pca()
+    # 14 废弃
+    # plink_to_gcta()
+    # 15 废弃
+    # twstats_analyze()
+    # 16
+    #generate_graph()
+
+
+# 第二部分 第二个文档的内容
+def second(mm, mf):
+    step_1()
+    step_2()
+    step_3(mm, mf)
+
+def third(k):
+    step_4()
+    step_5()
+    generate_graph()
+    pars = []
+    step_16(pars, k)
+
+# 第二部分 第二个文档的内容
+def fouth(k,n1, s1, wp1, wps1, chr):
+    step_4()
+    step_5()
+    #generate_graph()
+    pars = []
+    step_16(pars, k)
+    step_6(n1)
+    #pars = []
+    step_7(pars)
+    step_8(pars)
+    step_9(pars, s1)
+    step_10(pars, wp1, wps1)
+    step_11(pars, wp1, wps1)
+    step_12(pars)
+    step_13(pars)
+    step_14(pars, chr)
+    step_15(pars, chr)
+
+
+if __name__ == '__main__':
+    DEFAULT_SOURCE_FILE_PATH = "/home/software/project/source_fqgz/"
+    # 参考基因组文件的绝对路径,存放到 SOURCE_FILE_PATH 目录下
+    DEFAULT_FASTA_FILE_PATH = DEFAULT_SOURCE_FILE_PATH + ""
+
+    parser = argparse.ArgumentParser('select parameters:***.py')
+    # 阶段分为3步，可选参数 1,2,3,ALL 默认执行全部步骤
+    # 例如选择 1 则为指定第一步
+    # 选择ALL 则为执行全部步骤
+    parser.add_argument('-STAGE', '--stage', default="ALL",help='choose step to run,-STAGE 1 is mapping+snp calling+vcf generate,-STAGE 2 is vcf filter,-STAGE 3 is pca+admixture+Phylogenetic analyse to divide populations,-STAGE 4 is pca+admixture+Phylogenetic analyse+LDdecay+snp denisity+Genetic diversity datas+selective sweep analysis etc ')
+    parser.add_argument('-J', '--job', default=10,help='the number of jobs to submit,default=10')
+    parser.add_argument('-T', '--threadnum', default=4,help='threads ,default=4')
+    parser.add_argument('-SP', '--sp', default=DEFAULT_SOURCE_FILE_PATH)
+    parser.add_argument('-fasta-file-path', '--fasta', default=DEFAULT_FASTA_FILE_PATH)
+    parser.add_argument('-N', '--n1', default=10,help='times of bootstraps,default=10')
+    parser.add_argument('-s', '--s1', default=100000,help='the window size of snp density,default=10w')
+    parser.add_argument('-window-pi', '--wp1', default=50000,help='the window size of Pi/Fst/xp-clr,default=5000')
+    parser.add_argument('-window-pi-step', '--wps1', default=2000,help='the window step of Pi/Fst/xp-clr,default=2000')
+    parser.add_argument('-MF', '--mf', default=0.05,help='the Minor Allele Frequency to filter snp,default=0.05')
+    parser.add_argument('-MM', '--mm', default=0.2,help='the Max-missing rate,default=0.2')
+    # 染色体例子 2,3,8,24
+    parser.add_argument('-CHR', '--chr',help='Chromosomes splited with ","  e.g -CHR 1,2,3,4,5')
+    parser.add_argument('-K', '--k',help=' your belief of the number of ancestral populations,splited with "," e.g -K 1,2,3,4,5')
+    args = parser.parse_args()
+    print("selected parameters:" + str(args))
+
+    SOURCE_FILE_PATH = args.sp
+    FASTA_FILE_PATH = args.fasta
+    #THREAD_NUM = args.threadnum
+    #DEQUE_LEN = args.job
+    bam_sort_choice = 0
+    stage = args.stage
+    if "ALL" == stage:
+        parser.parse_args()
+        #first()
+        #second(args.mm, args.mf)
+        #third(args.n1, args.s1, args.wp1, args.wps1, args.chr)
+    elif 1 == int(args.stage):
+        first()
+    elif 2 == int(args.stage):
+        second(args.mm, args.mf)
+    elif 3 == int(args.stage):
+        third(args.k)
+    elif 4 == int(4):
+        fouth(args.k,args.n1, args.s1, args.wp1, args.wps1, args.chr)
+    else:
+        log("error choice")
+
+
