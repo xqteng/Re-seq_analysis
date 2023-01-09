@@ -47,16 +47,24 @@ optional arguments:
 ```
 python Re-seq_analysis --STAGE 1
 ```
+<br>result documents:mapping(.sam),snp calling(.bam,.markduplicate,.gvcf),vcf generate(all_raw.vcf)
+<br>
 <br>(2)-STAGE 2 is vcf filter,You can run it directly from the STAGE 1 results directory or bring your own unfiltered VCF file
 ```
 python Re-seq_analysis --STAGE 2 -MM 0.5 -MF 0.02
 ```
+<br>result documents:all_raw.vcf-->all_snp,vcf
+<br>
 <br>-STAGE 3 is pca+admixture+Phylogenetic analyse to divide populations which You're not quite sure about your group sub-groups.
 ```
 python Re-seq_analysis --STAGE 3 -N 100 -K 1,2,3,4,5,6,7 
 ```
+<br>result documents:pca(.eigenvec,.eigenval),admixture(plink.P,plink.Q),Phylogenetic analyse(.bestTree.nwk)
+<br>
 <br>-STAGE 4 is pca+admixture+Phylogenetic analyse+LDdecay+snp denisity+Genetic diversity datas+selective sweep analysis etc
 ```
 python Re-seq_analysis --STAGE 4 -s 100000 -M 500 -N 100 -K 1,2,3,4,5,6,7 --wp 50000 -wps 2000
 ```
+<br>result documents:pca(.eigenvec,.eigenval),admixture(plink.P,plink.Q),Phylogenetic analyse(.bestTree.nwk),LDdecay(stat.gz),snp denisity(.denisity.png),Genetic diversity datas(.hwe,.het,.pic),selective sweep analysis(.pi,.fst,.fst_pi,.xpclr)
+<br>
 
