@@ -16,7 +16,7 @@ The new version will be updated and maintained in /xqteng/Re-seq_analysis, pleas
 2.Introduction
 --
 Files to prepare before using this software include clean data, reference genome, sampling information file (a text file with a column of sampling IDs)
-<br>`xample：xxx_R1.fq.gz/xxx_R2.fq.gz,xxx.fa(xxx.fna),xxx.sampleID(dpending on the number of your groups)`
+<br>`example：xxx_R1.fq.gz/xxx_R2.fq.gz,xxx.fa(xxx.fna),xxx.sampleID(dpending on the number of your groups),For better recognition by pipline, please name your files in this way`
 ```
 [server]$  cat YZ.sampleID
 cro_001
