@@ -4,7 +4,7 @@ Based on the known pipelines and analysis outputs of population genetics, we con
 
 1.Install
 --
-The new version will be updated and maintained in /xqteng/Re-seq_analysis, please  download the latest version，No configuration required, just unpack and use。`Due to the large volume of resequencing data, it is recommended to run on a server`
+The new version will be updated and maintained in /xqteng/Re-seq_analysis, please  download the latest version。`No configuration required, just unpack and use。` `Due to the large volume of resequencing data, it is recommended to run on a linux server`
 <br>Method1 For linux server
 <br>`git clone https://github.com/xqteng/Re-seq_analysis.git` 
 <br>`cd Re-seq_analysis`<br/>
@@ -83,5 +83,10 @@ python Re-seq_analysis --STAGE 3 -N 100 -K 1,2,3,4,5,6,7
 ```
 python Re-seq_analysis --STAGE 4 -s 100000 -M 500 -N 100 -K 1,2,3,4,5,6,7 --wp 50000 -wps 2000 -CHR 01,02,03,04,05,06,07,08,09,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24
 ```
+<br>`Most of the results will contain images (.png, .pdf) and you can distinguish the results by the naming of the files`
+
+5.Discussing
+--
+E-mail:xqteng123@163.com
 
 
