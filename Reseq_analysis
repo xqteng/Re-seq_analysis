@@ -220,13 +220,13 @@ def sam_to_bam():
         exit(0)
 
     # 校验生成数量
-    bam_file_paths = list_file_with_end(BAM_FILE_PATH, "sort.bam")
+    bam_file_paths = list_file_with_end(BAM_FILE_PATH, "sorted.bam")
     if len(bam_file_paths) != sam_file_count:
         log("No. of sam not equals No. of bam")
         exit(0)
 
 
-# 6. sam文件使用samtools 筛选
+# 6. sam文件使用samtools 筛选####已废弃
 @waiting
 def sam_tools_filter():
     log("start samtools_filter")
@@ -254,7 +254,7 @@ def sam_tools_filter():
 @waiting
 def mark_duplicates():
     log("start mark_duplicates")
-    sorted_bam_paths = list_file_with_end(SORTED_BAM_FILE_PATH, "sorted.bam")
+    sorted_bam_paths = list_file_with_end(BAM_FILE_PATH, "sorted.bam")
     origin_cmd = "gatk MarkDuplicates -I {} -O {}.deduplicated -M {}.deduplicated.metrics"
     failed_files = []
     for sorted_bam_path in sorted_bam_paths:
