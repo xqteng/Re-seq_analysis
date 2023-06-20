@@ -1,7 +1,3 @@
-#北京组学生物科技有限公司
-#email: wangq@biomics.com.cn
-
-#source("https://raw.githubusercontent.com/YinLiLin/CMplot/master/R/CMplot.r")
 library(CMplot)
 library(getopt)
 #+--------------------
